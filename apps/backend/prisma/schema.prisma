@@ -7,7 +7,11 @@ generator client {
   provider = "prisma-client-js"
 }
 
-enum Role {
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum UserRole {
   USER
   PREMIUM
   ADMIN
@@ -19,83 +23,554 @@ enum SubscriptionTier {
   ENTERPRISE
 }
 
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+}
+
+enum AlertCondition {
+  PRICE_ABOVE
+  PRICE_BELOW
+  PERCENT_CHANGE_ABOVE
+  PERCENT_CHANGE_BELOW
+  RSI_OVERBOUGHT
+  RSI_OVERSOLD
+  VOLUME_BREAKOUT
+}
+
+enum SentimentRating {
+  BULLISH
+  NEUTRAL
+  BEARISH
+}
+
+enum TransactionType {
+  BUY
+  SELL
+}
+
+// ==========================================
+// DOMAIN MODELS
+// ==========================================
+
 model User {
-  id               String           @id @default(uuid())
-  email            String           @unique
-  firstName        String?
-  lastName         String?
-  role             Role             @default(USER)
-  subscriptionTier SubscriptionTier @default(FREE)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email            String           @unique @db.VarChar(255)
+  role             UserRole         @default(USER)
+  subscriptionTier SubscriptionTier @default(FREE) @map("subscription_tier")
+  isVerified       Boolean          @default(false) @map("is_verified")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
+  deletedAt        DateTime?        @map("deleted_at") @db.Timestamptz()
 
-  portfolios Portfolio[]
-  watchlists Watchlist[]
-  alerts     Alert[]
-  backtests  Backtest[]
+  profile            Profile?
+  sessions           UserSession[]
+  apiKeys            ApiKey[]
+  watchlists         Watchlist[]
+  portfolios         Portfolio[]
+  alerts             Alert[]
+  aiAnalyses         AiAnalysis[]
+  aiChatHistory      AiChatHistory[]
+  screenerPresets    ScreenerPreset[]
+  strategies         Strategy[]
+  backtests          Backtest[]
+  subscription       Subscription?
+  notifications      Notification[]
+  settings           Setting?
+  auditLogs          AuditLog[]
+  activityLogs       ActivityLog[]
 
+  @@index([email])
+  @@index([role, subscriptionTier])
+  @@index([deletedAt])
   @@map("users")
 }
 
-model Portfolio {
-  id        String   @id @default(uuid())
-  userId    String
-  name      String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Profile {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @unique @map("user_id") @db.Uuid
+  firstName   String?  @map("first_name") @db.VarChar(100)
+  lastName    String?  @map("last_name") @db.VarChar(100)
+  avatarUrl   String?  @map("avatar_url")
+  phoneNumber String?  @map("phone_number") @db.VarChar(20)
+  timezone    String   @default("UTC") @db.VarChar(50)
+  currency    String   @default("USD") @db.VarChar(10)
+  bio         String?
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  positions Position[]
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("portfolios")
+  @@map("profiles")
 }
 
-model Position {
-  id              String    @id @default(uuid())
-  portfolioId     String
-  symbol          String
-  shares          Float
-  averageBuyPrice Float
-  portfolio       Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+model UserSession {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  refreshToken String   @map("refresh_token")
+  ipAddress    String?  @map("ip_address") @db.VarChar(45)
+  userAgent    String?  @map("user_agent")
+  isRevoked    Boolean  @default(false) @map("is_revoked")
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz()
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  @@map("positions")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshToken])
+  @@map("user_sessions")
+}
+
+model ApiKey {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  keyName      String    @map("key_name") @db.VarChar(100)
+  keyHash      String    @unique @map("key_hash")
+  permissions  Json
+  lastUsedAt   DateTime? @map("last_used_at") @db.Timestamptz()
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz()
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+model Stock {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  symbol    String   @unique @db.VarChar(20)
+  name      String   @db.VarChar(255)
+  exchange  String   @db.VarChar(50)
+  sector    String?  @db.VarChar(100)
+  industry  String?  @db.VarChar(100)
+  country   String   @default("US") @db.VarChar(50)
+  currency  String   @default("USD") @db.VarChar(10)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  prices               StockPrice[]
+  indicators           TechnicalIndicator[]
+  watchlistItems       WatchlistItem[]
+  portfolioHoldings    PortfolioHolding[]
+  portfolioTransactions PortfolioTransaction[]
+  alerts               Alert[]
+  newsSentiment        NewsSentiment[]
+  aiAnalyses           AiAnalysis[]
+  backtests            Backtest[]
+
+  @@index([symbol])
+  @@index([sector])
+  @@index([exchange])
+  @@map("stocks")
+}
+
+model StockPrice {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stockId       String   @map("stock_id") @db.Uuid
+  timestamp     DateTime @db.Timestamptz()
+  open          Decimal  @db.Decimal(14, 4)
+  high          Decimal  @db.Decimal(14, 4)
+  low           Decimal  @db.Decimal(14, 4)
+  close         Decimal  @db.Decimal(14, 4)
+  volume        BigInt
+  adjustedClose Decimal? @map("adjusted_close") @db.Decimal(14, 4)
+  timeframe     String   @default("1D") @db.VarChar(10)
+
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@index([stockId, timeframe, timestamp(sort: Desc)])
+  @@index([timestamp])
+  @@map("stock_prices")
+}
+
+model TechnicalIndicator {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stockId        String   @map("stock_id") @db.Uuid
+  timestamp      DateTime @db.Timestamptz()
+  timeframe      String   @default("1D") @db.VarChar(10)
+  sma50          Decimal? @map("sma_50") @db.Decimal(14, 4)
+  sma200         Decimal? @map("sma_200") @db.Decimal(14, 4)
+  ema20          Decimal? @map("ema_20") @db.Decimal(14, 4)
+  rsi14          Decimal? @map("rsi_14") @db.Decimal(8, 4)
+  macd           Decimal? @db.Decimal(12, 4)
+  macdSignal     Decimal? @map("macd_signal") @db.Decimal(12, 4)
+  macdHist       Decimal? @map("macd_hist") @db.Decimal(12, 4)
+  bollingerUpper Decimal? @map("bollinger_upper") @db.Decimal(14, 4)
+  bollingerLower Decimal? @map("bollinger_lower") @db.Decimal(14, 4)
+  vwap           Decimal? @db.Decimal(14, 4)
+  atr14          Decimal? @map("atr_14") @db.Decimal(12, 4)
+
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@index([stockId, timeframe, timestamp(sort: Desc)])
+  @@map("technical_indicators")
+}
+
+model MarketIndex {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  symbol        String   @unique @db.VarChar(20)
+  name          String   @db.VarChar(100)
+  price         Decimal  @db.Decimal(14, 4)
+  changeAmount  Decimal  @map("change_amount") @db.Decimal(14, 4)
+  changePercent Decimal  @map("change_percent") @db.Decimal(8, 4)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz()
+
+  @@map("market_indices")
 }
 
 model Watchlist {
-  id        String   @id @default(uuid())
-  userId    String
-  name      String
-  symbols   String[]
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  name        String    @db.VarChar(100)
+  description String?
+  isDefault   Boolean   @default(false) @map("is_default")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz()
 
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items WatchlistItem[]
+
+  @@index([userId])
   @@map("watchlists")
 }
 
-model Alert {
-  id           String   @id @default(uuid())
-  userId       String
-  symbol       String
-  condition    String
-  targetValue  Float
-  isActive     Boolean  @default(true)
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt    DateTime @default(now())
+model WatchlistItem {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  watchlistId String   @map("watchlist_id") @db.Uuid
+  stockId     String   @map("stock_id") @db.Uuid
+  addedAt     DateTime @default(now()) @map("added_at") @db.Timestamptz()
 
+  watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  stock     Stock     @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, stockId])
+  @@map("watchlist_items")
+}
+
+model Portfolio {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  name        String    @db.VarChar(100)
+  description String?
+  currency    String    @default("USD") @db.VarChar(10)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz()
+
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  holdings     PortfolioHolding[]
+  transactions PortfolioTransaction[]
+
+  @@index([userId])
+  @@map("portfolios")
+}
+
+model PortfolioHolding {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  portfolioId     String   @map("portfolio_id") @db.Uuid
+  stockId         String   @map("stock_id") @db.Uuid
+  totalShares     Decimal  @default(0) @map("total_shares") @db.Decimal(18, 6)
+  averageBuyPrice Decimal  @default(0) @map("average_buy_price") @db.Decimal(14, 4)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  stock     Stock     @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioId, stockId])
+  @@map("portfolio_holdings")
+}
+
+model PortfolioTransaction {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  portfolioId String          @map("portfolio_id") @db.Uuid
+  stockId     String          @map("stock_id") @db.Uuid
+  type        TransactionType
+  shares      Decimal         @db.Decimal(18, 6)
+  price       Decimal         @db.Decimal(14, 4)
+  fees        Decimal         @default(0) @db.Decimal(10, 2)
+  executedAt  DateTime        @map("executed_at") @db.Timestamptz()
+  notes       String?
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  stock     Stock     @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioId, stockId, executedAt(sort: Desc)])
+  @@map("portfolio_transactions")
+}
+
+model Alert {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String         @map("user_id") @db.Uuid
+  stockId         String         @map("stock_id") @db.Uuid
+  condition       AlertCondition
+  targetValue     Decimal        @map("target_value") @db.Decimal(14, 4)
+  isActive        Boolean        @default(true) @map("is_active")
+  isOneTime       Boolean        @default(true) @map("is_one_time")
+  lastTriggeredAt DateTime?      @map("last_triggered_at") @db.Timestamptz()
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+  deletedAt       DateTime?      @map("deleted_at") @db.Timestamptz()
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock Stock      @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  logs  AlertLog[]
+
+  @@index([stockId, condition, isActive])
+  @@index([userId])
   @@map("alerts")
 }
 
-model Backtest {
-  id            String   @id @default(uuid())
-  userId        String
-  symbol        String
-  strategyName  String
-  sharpeRatio   Float
-  totalReturn   Float
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt     DateTime @default(now())
+model AlertLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  alertId        String   @map("alert_id") @db.Uuid
+  triggeredValue Decimal  @map("triggered_value") @db.Decimal(14, 4)
+  message        String
+  triggeredAt    DateTime @default(now()) @map("triggered_at") @db.Timestamptz()
 
+  alert Alert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+
+  @@index([alertId])
+  @@map("alert_logs")
+}
+
+model News {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title       String   @db.VarChar(500)
+  source      String   @db.VarChar(100)
+  url         String   @unique
+  summary     String?
+  content     String?
+  publishedAt DateTime @map("published_at") @db.Timestamptz()
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  sentiments NewsSentiment[]
+
+  @@index([publishedAt(sort: Desc)])
+  @@map("news")
+}
+
+model NewsSentiment {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  newsId          String          @map("news_id") @db.Uuid
+  stockId         String?         @map("stock_id") @db.Uuid
+  sentiment       SentimentRating
+  confidenceScore Decimal         @map("confidence_score") @db.Decimal(5, 4)
+  analysisSummary String?         @map("analysis_summary")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+
+  news  News   @relation(fields: [newsId], references: [id], onDelete: Cascade)
+  stock Stock? @relation(fields: [stockId], references: [id], onDelete: SetNull)
+
+  @@index([newsId])
+  @@index([stockId])
+  @@map("news_sentiment")
+}
+
+model AiAnalysis {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String?         @map("user_id") @db.Uuid
+  stockId         String          @map("stock_id") @db.Uuid
+  sentiment       SentimentRating
+  confidenceScore Decimal         @map("confidence_score") @db.Decimal(5, 2)
+  summary         String
+  keyDrivers      Json            @map("key_drivers")
+  riskFactors     Json            @map("risk_factors")
+  suggestedAction String          @map("suggested_action") @db.VarChar(20)
+  rawResponse     Json?           @map("raw_response")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@index([stockId, createdAt(sort: Desc)])
+  @@index([userId])
+  @@map("ai_analysis")
+}
+
+model AiChatHistory {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  prompt     String
+  response   String
+  tokensUsed Int      @default(0) @map("tokens_used")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("ai_chat_history")
+}
+
+model ScreenerPreset {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  name        String   @db.VarChar(100)
+  filterRules Json     @map("filter_rules")
+  isPublic    Boolean  @default(false) @map("is_public")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("screener_presets")
+}
+
+model Strategy {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  name        String   @db.VarChar(100)
+  description String?
+  rulesConfig Json     @map("rules_config")
+  isPublic    Boolean  @default(false) @map("is_public")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  backtests Backtest[]
+
+  @@index([userId])
+  @@map("strategies")
+}
+
+model Backtest {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  strategyId     String   @map("strategy_id") @db.Uuid
+  stockId        String   @map("stock_id") @db.Uuid
+  startDate      DateTime @map("start_date") @db.Date
+  endDate        DateTime @map("end_date") @db.Date
+  initialCapital Decimal  @map("initial_capital") @db.Decimal(14, 2)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  strategy Strategy        @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  stock    Stock           @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  result   BacktestResult?
+
+  @@index([userId])
   @@map("backtests")
+}
+
+model BacktestResult {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  backtestId           String   @unique @map("backtest_id") @db.Uuid
+  totalReturnPercent   Decimal  @map("total_return_percent") @db.Decimal(8, 4)
+  annualizedReturn     Decimal  @map("annualized_return") @db.Decimal(8, 4)
+  sharpeRatio          Decimal  @map("sharpe_ratio") @db.Decimal(6, 4)
+  maxDrawdown          Decimal  @map("max_drawdown") @db.Decimal(6, 4)
+  winRatePercent       Decimal  @map("win_rate_percent") @db.Decimal(6, 4)
+  totalTrades          Int      @map("total_trades")
+  equityCurve          Json     @map("equity_curve")
+  tradesLog            Json     @map("trades_log")
+  completedAt          DateTime @default(now()) @map("completed_at") @db.Timestamptz()
+
+  backtest Backtest @relation(fields: [backtestId], references: [id], onDelete: Cascade)
+
+  @@map("backtest_results")
+}
+
+model Subscription {
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId               String             @unique @map("user_id") @db.Uuid
+  stripeCustomerId     String?            @unique @map("stripe_customer_id") @db.VarChar(100)
+  stripeSubscriptionId String?            @unique @map("stripe_subscription_id") @db.VarChar(100)
+  tier                 SubscriptionTier   @default(FREE)
+  status               SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart   DateTime?          @map("current_period_start") @db.Timestamptz()
+  currentPeriodEnd     DateTime?          @map("current_period_end") @db.Timestamptz()
+  cancelAtPeriodEnd    Boolean            @default(false) @map("cancel_at_period_end")
+  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt            DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@map("subscriptions")
+}
+
+model Payment {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscriptionId  String    @map("subscription_id") @db.Uuid
+  stripeInvoiceId String?   @unique @map("stripe_invoice_id") @db.VarChar(100)
+  amount          Decimal   @db.Decimal(10, 2)
+  currency        String    @default("USD") @db.VarChar(10)
+  status          String    @db.VarChar(50)
+  paidAt          DateTime? @map("paid_at") @db.Timestamptz()
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@map("payments")
+}
+
+model Notification {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String   @db.VarChar(255)
+  message   String
+  type      String   @db.VarChar(50)
+  isRead    Boolean  @default(false) @map("is_read")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model Setting {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String   @unique @map("user_id") @db.Uuid
+  emailAlerts      Boolean  @default(true) @map("email_alerts")
+  pushAlerts       Boolean  @default(true) @map("push_alerts")
+  defaultChartType String   @default("CANDLESTICK") @map("default_chart_type") @db.VarChar(20)
+  theme            String   @default("DARK") @db.VarChar(20)
+  preferences      Json?
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("settings")
+}
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   @db.VarChar(100)
+  entityType String   @map("entity_type") @db.VarChar(100)
+  entityId   String?  @map("entity_id") @db.Uuid
+  oldValue   Json?    @map("old_value")
+  newValue   Json?    @map("new_value")
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model ActivityLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  event     String   @db.VarChar(100)
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("activity_logs")
 }
