@@ -1,18 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  :root {
-    color-scheme: dark;
-  }
-  
   body {
-    @apply bg-[#0B0F17] text-slate-100 font-sans antialiased selection:bg-emerald-500 selection:text-white;
+    background-color: #EFEFF4;
+    color: #1E293B;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
     margin: 0;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 
   /* Custom Scrollbar Styling */
@@ -21,22 +18,15 @@
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #0B0F17;
+    background: #EFEFF4;
   }
   ::-webkit-scrollbar-thumb {
-    background: #1E293B;
-    border-radius: 3px;
+    background: #CBD5E1;
+    border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #334155;
+    background: #94A3B8;
   }
-}
-
-/* Glassmorphism & Micro Utilities */
-.glass-panel {
-  background: rgba(19, 27, 46, 0.85);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(30, 41, 59, 0.8);
 }
 
 .no-scrollbar::-webkit-scrollbar {
