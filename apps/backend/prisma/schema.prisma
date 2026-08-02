@@ -1,0 +1,101 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  USER
+  PREMIUM
+  ADMIN
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+model User {
+  id               String           @id @default(uuid())
+  email            String           @unique
+  firstName        String?
+  lastName         String?
+  role             Role             @default(USER)
+  subscriptionTier SubscriptionTier @default(FREE)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  portfolios Portfolio[]
+  watchlists Watchlist[]
+  alerts     Alert[]
+  backtests  Backtest[]
+
+  @@map("users")
+}
+
+model Portfolio {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  positions Position[]
+
+  @@map("portfolios")
+}
+
+model Position {
+  id              String    @id @default(uuid())
+  portfolioId     String
+  symbol          String
+  shares          Float
+  averageBuyPrice Float
+  portfolio       Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("positions")
+}
+
+model Watchlist {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  symbols   String[]
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@map("watchlists")
+}
+
+model Alert {
+  id           String   @id @default(uuid())
+  userId       String
+  symbol       String
+  condition    String
+  targetValue  Float
+  isActive     Boolean  @default(true)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@map("alerts")
+}
+
+model Backtest {
+  id            String   @id @default(uuid())
+  userId        String
+  symbol        String
+  strategyName  String
+  sharpeRatio   Float
+  totalReturn   Float
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+
+  @@map("backtests")
+}
